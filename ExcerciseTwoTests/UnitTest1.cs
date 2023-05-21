@@ -10,144 +10,245 @@ namespace YourNamespace.Tests
     public class FileProcessorTests
     {
         private FileProcessor fileProcessor;
-        private string basePath;
+        private string testFilesDirectory;
+        private string testDataFilePath;
 
         [SetUp]
-        public void SetUp()
+        public void Setup()
         {
             fileProcessor = new FileProcessor();
-            basePath = Path.Combine(Directory.GetCurrentDirectory(), "TestFiles");
-            Directory.CreateDirectory(basePath);
+            testFilesDirectory = GetTestFilesDirectory();
+            testDataFilePath = Path.Combine(testFilesDirectory, "TestFile.csv");
         }
 
         [TearDown]
         public void TearDown()
         {
-            Directory.Delete(basePath, true);
+            // Clean up the generated output files
+            var outputDirectory = Path.Combine(testFilesDirectory, "OutputFiles");
+            if (Directory.Exists(outputDirectory))
+            {
+                Directory.Delete(outputDirectory, true);
+            }
+        }
+
+        private string GetTestFilesDirectory()
+        {
+            var testDirectory = TestContext.CurrentContext.TestDirectory;
+            return Path.Combine(testDirectory, "TestFiles");
         }
 
         [Test]
         public void CreateTableFromCsv_ValidFilePath_ReturnsDataTable()
         {
             // Arrange
-            string filePath = Path.Combine(basePath, "Data.csv");
-            CreateCsvFile(filePath, "FirstName,LastName,Address,PhoneNumber\nJohn,Doe,123 Main St,1234567890\nJane,Smith,456 Elm St,0987654321");
+            var expectedTable = new DataTable();
+            expectedTable.Columns.Add("FirstName");
+            expectedTable.Columns.Add("LastName");
+            expectedTable.Columns.Add("Address");
+            expectedTable.Columns.Add("PhoneNumber");
+
+            var dataRow1 = expectedTable.NewRow();
+            dataRow1["FirstName"] = "John";
+            dataRow1["LastName"] = "Doe";
+            dataRow1["Address"] = "123 Main St";
+            dataRow1["PhoneNumber"] = "1234567890";
+            expectedTable.Rows.Add(dataRow1);
+
+            var dataRow2 = expectedTable.NewRow();
+            dataRow2["FirstName"] = "Jane";
+            dataRow2["LastName"] = "Smith";
+            dataRow2["Address"] = "456 Elm St";
+            dataRow2["PhoneNumber"] = DBNull.Value;
+            expectedTable.Rows.Add(dataRow2);
 
             // Act
-            DataTable table = fileProcessor.CreateTableFromCsv(filePath);
+            var actualTable = fileProcessor.CreateTableFromCsv(testDataFilePath);
 
             // Assert
-            Assert.AreEqual(2, table.Rows.Count);
-            Assert.AreEqual("John", table.Rows[0]["FirstName"]);
-            Assert.AreEqual("Doe", table.Rows[0]["LastName"]);
-            Assert.AreEqual("123 Main St", table.Rows[0]["Address"]);
-            Assert.AreEqual("1234567890", table.Rows[0]["PhoneNumber"]);
-            Assert.AreEqual("Jane", table.Rows[1]["FirstName"]);
-            Assert.AreEqual("Smith", table.Rows[1]["LastName"]);
-            Assert.AreEqual("456 Elm St", table.Rows[1]["Address"]);
-            Assert.AreEqual("0987654321", table.Rows[1]["PhoneNumber"]);
+            Assert.AreEqual(expectedTable.Rows.Count, actualTable.Rows.Count);
+            for (int i = 0; i < expectedTable.Rows.Count; i++)
+            {
+                var expectedRow = expectedTable.Rows[i];
+                var actualRow = actualTable.Rows[i];
+                for (int j = 0; j < expectedTable.Columns.Count; j++)
+                {
+                    var expectedValue = expectedRow[j];
+                    var actualValue = actualRow[j];
+                    Assert.AreEqual(expectedValue, actualValue);
+                }
+            }
+        }
+
+
+        [Test]
+        public void GetNameFrequency_ValidTableAndFieldName_ReturnsNameCountList()
+        {
+            // Arrange
+            var table = new DataTable();
+            table.Columns.Add("Name");
+
+            var row1 = table.NewRow();
+            row1["Name"] = "John";
+            table.Rows.Add(row1);
+
+            var row2 = table.NewRow();
+            row2["Name"] = "John";
+            table.Rows.Add(row2);
+
+            var row3 = table.NewRow();
+            row3["Name"] = "Jane";
+            table.Rows.Add(row3);
+
+            var expectedNameFrequency = new List<NameCount>()
+            {
+                new NameCount() { Name = "John", Count = 2 },
+                new NameCount() { Name = "Jane", Count = 1 }
+            };
+
+            // Act
+            var actualNameFrequency = fileProcessor.GetNameFrequency(table, "Name");
+
+            // Assert
+            Assert.AreEqual(expectedNameFrequency.Count, actualNameFrequency.Count);
+            for (int i = 0; i < expectedNameFrequency.Count; i++)
+            {
+                var expectedNameCount = expectedNameFrequency[i];
+                var actualNameCount = actualNameFrequency[i];
+                Assert.AreEqual(expectedNameCount.Name, actualNameCount.Name);
+                Assert.AreEqual(expectedNameCount.Count, actualNameCount.Count);
+            }
         }
 
         [Test]
-        public void GetNameFrequency_ValidDataTableAndFieldName_ReturnsNameCountList()
+        public void ExtractAllTableData_ValidTable_ReturnsUserInfoList()
         {
             // Arrange
-            DataTable table = new DataTable();
-            table.Columns.Add("FirstName");
-            table.Columns.Add("LastName");
-            table.Rows.Add("John", "Doe");
-            table.Rows.Add("John", "Smith");
-            table.Rows.Add("Jane", "Doe");
-
-            // Act
-            List<NameCount> nameFrequency = fileProcessor.GetNameFrequency(table, "FirstName");
-
-            // Assert
-            Assert.AreEqual(2, nameFrequency.Count);
-            Assert.AreEqual("John", nameFrequency[0].Name);
-            Assert.AreEqual(2, nameFrequency[0].Count);
-            Assert.AreEqual("Jane", nameFrequency[1].Name);
-            Assert.AreEqual(1, nameFrequency[1].Count);
-        }
-
-        [Test]
-        public void ExtractAllTableData_ValidDataTable_ReturnsUserInfoList()
-        {
-            // Arrange
-            DataTable table = new DataTable();
+            var table = new DataTable();
             table.Columns.Add("FirstName");
             table.Columns.Add("LastName");
             table.Columns.Add("Address");
             table.Columns.Add("PhoneNumber");
-            table.Rows.Add("John", "Doe", "123 Main St", "1234567890");
-            table.Rows.Add("Jane", "Smith", "456 Elm St", "0987654321");
+
+            var row1 = table.NewRow();
+            row1["FirstName"] = "John";
+            row1["LastName"] = "Doe";
+            row1["Address"] = "123 Main St";
+            row1["PhoneNumber"] = "1234567890";
+            table.Rows.Add(row1);
+
+            var row2 = table.NewRow();
+            row2["FirstName"] = "Jane";
+            row2["LastName"] = "Smith";
+            row2["Address"] = "456 Elm St";
+            row2["PhoneNumber"] = DBNull.Value;
+            table.Rows.Add(row2);
+
+            var expectedUserInfoList = new List<UserInfo>()
+    {
+        new UserInfo()
+        {
+            FirstName = "John",
+            LastName = "Doe",
+            Address = new Address()
+            {
+                Number = 123,
+                Name = "Main St"
+            },
+            PhoneNumber = 1234567890
+        },
+        new UserInfo()
+        {
+            FirstName = "Jane",
+            LastName = "Smith",
+            Address = new Address()
+            {
+                Number = 456,
+                Name = "Elm St"
+            },
+            PhoneNumber = 0
+        }
+    };
 
             // Act
-            List<UserInfo> userInfoList = fileProcessor.ExtractAllTableData(table);
+            var actualUserInfoList = fileProcessor.ExtractAllTableData(table);
 
             // Assert
-            Assert.AreEqual(2, userInfoList.Count);
-            Assert.AreEqual("John", userInfoList[0].FirstName);
-            Assert.AreEqual("Doe", userInfoList[0].LastName);
-            Assert.AreEqual(123, userInfoList[0].Address.Number);
-            Assert.AreEqual("Main St", userInfoList[0].Address.Name);
-            Assert.AreEqual(1234567890, userInfoList[0].PhoneNumber);
-            Assert.AreEqual("Jane", userInfoList[1].FirstName);
-            Assert.AreEqual("Smith", userInfoList[1].LastName);
-            Assert.AreEqual(456, userInfoList[1].Address.Number);
-            Assert.AreEqual("Elm St", userInfoList[1].Address.Name);
-            Assert.AreEqual(987654321, userInfoList[1].PhoneNumber);
+            Assert.AreEqual(expectedUserInfoList.Count, actualUserInfoList.Count);
+            for (int i = 0; i < expectedUserInfoList.Count; i++)
+            {
+                var expectedUserInfo = expectedUserInfoList[i];
+                var actualUserInfo = actualUserInfoList[i];
+                Assert.AreEqual(expectedUserInfo.FirstName, actualUserInfo.FirstName);
+                Assert.AreEqual(expectedUserInfo.LastName, actualUserInfo.LastName);
+                Assert.AreEqual(expectedUserInfo.Address.Number, actualUserInfo.Address.Number);
+                Assert.AreEqual(expectedUserInfo.Address.Name, actualUserInfo.Address.Name);
+                Assert.AreEqual(expectedUserInfo.PhoneNumber, actualUserInfo.PhoneNumber);
+            }
         }
 
         [Test]
         public void ConvertListToFile_StringList_CreatesFileWithCorrectContent()
         {
             // Arrange
-            string outputFilePath = Path.Combine(basePath, "NamesOrderedByFrequency.txt");
-            List<string> names = new List<string> { "John", "Jane", "Adam", "Jane" };
+            var items = new List<string>() { "John", "Jane", "Doe" };
+            var outputPath = Path.Combine(testFilesDirectory, "OutputFiles", "Output.txt");
 
             // Act
-            fileProcessor.ConvertListToFile(basePath, "NamesOrderedByFrequency", names);
+            fileProcessor.ConvertListToFile(outputPath, items);
 
             // Assert
-            Assert.IsTrue(File.Exists(outputFilePath));
-            string[] lines = File.ReadAllLines(outputFilePath);
-            Assert.AreEqual(4, lines.Length);
-            Assert.AreEqual("John", lines[0]);
-            Assert.AreEqual("Jane", lines[1]);
-            Assert.AreEqual("Adam", lines[2]);
-            Assert.AreEqual("Jane", lines[3]);
+            Assert.IsTrue(File.Exists(outputPath));
+            var lines = File.ReadAllLines(outputPath);
+            Assert.AreEqual(items.Count, lines.Length);
+            for (int i = 0; i < items.Count; i++)
+            {
+                Assert.AreEqual(items[i], lines[i]);
+            }
         }
 
         [Test]
-        public void ConvertListToFile_AddressList_CreatesFileWithCorrectContent()
+        public void ConvertListToFile_UserInfoList_CreatesFileWithCorrectContent()
         {
             // Arrange
-            string outputFilePath = Path.Combine(basePath, "AddressesSortedAlphabetically.txt");
-            List<Address> addresses = new List<Address>
+            var items = new List<UserInfo>()
             {
-                new Address { Number = 123, Name = "Main St" },
-                new Address { Number = 456, Name = "Elm St" },
-                new Address { Number = 789, Name = "Oak Ave" }
+                new UserInfo()
+                {
+                    FirstName = "John",
+                    LastName = "Doe",
+                    Address = new Address()
+                    {
+                        Number = 123,
+                        Name = "Main St"
+                    },
+                    PhoneNumber = 1234567890
+                },
+                new UserInfo()
+                {
+                    FirstName = "Jane",
+                    LastName = "Smith",
+                    Address = new Address()
+                    {
+                        Number = 456,
+                        Name = "Elm St"
+                    },
+                    PhoneNumber = 0
+                }
             };
+            var outputPath = Path.Combine(testFilesDirectory, "OutputFiles", "Output.txt");
 
             // Act
-            fileProcessor.ConvertListToFile(basePath, "AddressesSortedAlphabetically", addresses);
+            fileProcessor.ConvertListToFile(outputPath, items);
 
             // Assert
-            Assert.IsTrue(File.Exists(outputFilePath));
-            string[] lines = File.ReadAllLines(outputFilePath);
-            Assert.AreEqual(3, lines.Length);
-            Assert.AreEqual("123, Main St", lines[0]);
-            Assert.AreEqual("456, Elm St", lines[1]);
-            Assert.AreEqual("789, Oak Ave ^^s", lines[2]);
-        }
-
-        private void CreateCsvFile(string filePath, string content)
-        {
-            using (StreamWriter writer = new StreamWriter(filePath))
+            Assert.IsTrue(File.Exists(outputPath));
+            var lines = File.ReadAllLines(outputPath);
+            Assert.AreEqual(items.Count, lines.Length);
+            for (int i = 0; i < items.Count; i++)
             {
-                writer.Write(content);
+                var expectedLine = $"{items[i].FirstName}, {items[i].LastName}, {items[i].Address.Number}, {items[i].Address.Name}, {items[i].PhoneNumber}";
+                Assert.AreEqual(expectedLine, lines[i]);
             }
         }
     }
